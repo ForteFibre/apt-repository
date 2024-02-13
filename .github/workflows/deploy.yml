@@ -1,0 +1,25 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    name: Deploy
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+      - run: npm i -g pnpm
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          secrets: |
+            APT_ACCESS_KEY
+        env:
+          APT_ACCESS_KEY: ${{ secrets.APT_ACCESS_KEY }}

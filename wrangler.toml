@@ -1,0 +1,11 @@
+name = "apt-repository"
+compatibility_date = "2023-12-01"
+account_id = "e2f2cb17fbe60db294e8000a02153be6"
+routes = [
+    { pattern = "apt.fortefibre.net/*", zone_id = "dc309a91872f9f39ce96de05a421d71a" },
+]
+main = "./src/index.ts"
+
+[[r2_buckets]]
+binding = "REPO"
+bucket_name = "fortefibre-apt"
