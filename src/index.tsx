@@ -4,6 +4,7 @@ import { basicAuth } from "./basic";
 import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { SimpleKey } from "./simple-key";
 import { verifyBelongingOrganization } from "./github";
+import { Credentials, Top } from "./html";
 
 interface Env {
   APT_ACCESS_KEY: string;
@@ -62,7 +63,11 @@ app.get("/credentials", async (c) => {
     username
   );
 
-  return c.text(`Username: ${username}\nPassword: ${password}`);
+  return c.html(<Credentials username={username} password={password} />);
+});
+
+app.get("/", (c) => {
+  return c.html(<Top />);
 });
 
 app.get("*", async (c) => {
