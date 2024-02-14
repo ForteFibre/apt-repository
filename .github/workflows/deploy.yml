@@ -21,5 +21,9 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           secrets: |
             APT_ACCESS_KEY
+            GH_CLIENT_ID
+            GH_CLIENT_SECRET
         env:
           APT_ACCESS_KEY: ${{ secrets.APT_ACCESS_KEY }}
+          GH_CLIENT_ID: ${{ secrets.GH_CLIENT_ID }}
+          GH_CLIENT_SECRET: ${{ secrets.GH_CLIENT_SECRET }}

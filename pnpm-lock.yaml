@@ -5,6 +5,9 @@ settings:
   excludeLinksFromLockfile: false
 
 dependencies:
+  '@hono/oauth-providers':
+    specifier: ^0.3.0
+    version: 0.3.0(hono@4.0.1)
   hono:
     specifier: ^4.0.1
     version: 4.0.1
@@ -301,6 +304,15 @@ packages:
     resolution: {integrity: sha512-+KpH+QxZU7O4675t3mnkQKcZZg56u+K/Ct2K+N2AZYNVK8kyeo/bI18tI8aPm3tvNNRyTWfj6s5tnGNlcbQRsA==}
     engines: {node: '>=14'}
     dev: true
+
+  /@hono/oauth-providers@0.3.0(hono@4.0.1):
+    resolution: {integrity: sha512-1ksba6SBFOiwOqy168vKLwSDm4CPLJD5pIzLtVLY7aY6C/TupripO3UOLcT1eYmcqd+Jt3gXo93K4U9zwl6KjA==}
+    engines: {node: '>=18.4.0'}
+    peerDependencies:
+      hono: ^3.0.0
+    dependencies:
+      hono: 4.0.1
+    dev: false
 
   /@jridgewell/resolve-uri@3.1.1:
     resolution: {integrity: sha512-dSYZh7HhCDtCKm4QakX0xFpsRDqjjtZf/kjI/v3T3Nwt5r8/qz/M19F9ySyOqU94SXBmeG9ttTul+YnR4LOxFA==}

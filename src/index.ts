@@ -1,42 +1,73 @@
-import { Hono, HonoRequest } from "hono";
-import { decodeBase64, encodeBase64Url } from "hono/utils/encode";
+import { Hono } from "hono";
+import { GitHubUser, githubAuth } from "@hono/oauth-providers/github";
+import { basicAuth } from "./basic";
+import { getSignedCookie, setSignedCookie } from "hono/cookie";
+import { SimpleKey } from "./simple-key";
+import { verifyBelongingOrganization } from "./github";
 
 interface Env {
   APT_ACCESS_KEY: string;
+  GH_CLIENT_ID: string;
+  GH_CLIENT_SECRET: string;
   REPO: R2Bucket;
   [key: string]: unknown;
 }
 
 const app = new Hono<{ Bindings: Env }>();
 
-const CREDENTIALS_REGEXP =
-  /^ *(?:[Bb][Aa][Ss][Ii][Cc]) +([A-Za-z0-9._~+/-]+=*) *$/;
-const USER_PASS_REGEXP = /^([^:]*):(.*)$/;
-const utf8Decoder = new TextDecoder();
-const auth = (req: HonoRequest) => {
-  const match = CREDENTIALS_REGEXP.exec(req.header("Authorization") || "");
-  if (!match) {
-    return undefined;
+app.use(
+  "/auth",
+  (c, next) => {
+    const middleware = githubAuth({
+      client_id: c.env.GH_CLIENT_ID,
+      client_secret: c.env.GH_CLIENT_SECRET,
+      oauthApp: true,
+      scope: ["read:org"],
+    });
+
+    return middleware(c, next);
+  },
+  async (c) => {
+    const token = c.get("token")?.token;
+    if (!token) {
+      return c.text("Unauthorized", { status: 401 });
+    }
+
+    // TODO: ハードコーディングしない
+    const isMember = await verifyBelongingOrganization(token, "ForteFibre");
+
+    if (isMember) {
+      const user: GitHubUser = c.get("user-github") as GitHubUser;
+      const id = `${user.login}-${user.id}-${Date.now()}`;
+
+      await setSignedCookie(c, "apt_session", id, c.env.APT_ACCESS_KEY, {
+        maxAge: 60 * 60 * 24,
+      });
+
+      return c.redirect("/credentials");
+    }
+
+    return c.text("Unauthorized", { status: 401 });
+  }
+);
+
+app.get("/credentials", async (c) => {
+  const session = await getSignedCookie(c, c.env.APT_ACCESS_KEY, "apt_session");
+  if (!session) {
+    return c.redirect("/auth");
   }
 
-  let userPass = undefined;
-  // If an invalid string is passed to atob(), it throws a `DOMException`.
-  try {
-    userPass = USER_PASS_REGEXP.exec(
-      utf8Decoder.decode(decodeBase64(match[1]))
-    );
-  } catch {} // Do nothing
+  const username = session;
+  const password = await new SimpleKey(c.env.APT_ACCESS_KEY).generatePassword(
+    username
+  );
 
-  if (!userPass) {
-    return undefined;
-  }
-
-  return { username: userPass[1], password: userPass[2] };
-};
+  return c.text(`Username: ${username}\nPassword: ${password}`);
+});
 
 app.get("*", async (c) => {
-  const credentials = auth(c.req);
-  const shaSecret = c.env.APT_ACCESS_KEY;
+  const credentials = basicAuth(c.req);
+
   if (!credentials) {
     const res = new Response("Unauthorized", {
       status: 401,
@@ -47,24 +78,12 @@ app.get("*", async (c) => {
     return res;
   }
 
-  const shaKey = await crypto.subtle.importKey(
-    "raw",
-    new TextEncoder().encode(shaSecret),
-    { name: "HMAC", hash: "SHA-256" },
-    false,
-    ["sign"]
-  );
-  const shaHash = await crypto.subtle.sign(
-    "HMAC",
-    shaKey,
-    new TextEncoder().encode(credentials.username)
-  );
+  const { username, password } = credentials;
+  const shaSecret = c.env.APT_ACCESS_KEY;
+  const simpleKey = new SimpleKey(shaSecret);
+  const expectedPassword = await simpleKey.generatePassword(username);
 
-  const expectedPassword = [...new Uint8Array(shaHash)]
-    .map((x) => x.toString(16).padStart(2, "0"))
-    .join("");
-
-  if (expectedPassword !== credentials.password) {
+  if (expectedPassword !== password) {
     const res = new Response("Unauthorized", {
       status: 401,
       headers: {
@@ -74,7 +93,19 @@ app.get("*", async (c) => {
     return res;
   }
 
-  return c.text("Hello Hono!");
+  const object = await c.env.REPO.get(c.req.path.slice(1));
+
+  if (object === null) {
+    return new Response("Object Not Found", { status: 404 });
+  }
+
+  const headers = new Headers();
+  object.writeHttpMetadata(headers);
+  headers.set("etag", object.httpEtag);
+
+  return new Response(object.body, {
+    headers,
+  });
 });
 
 export default app;
