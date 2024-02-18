@@ -71,31 +71,35 @@ app.get("/", (c) => {
 });
 
 app.get("*", async (c) => {
-  const credentials = basicAuth(c.req);
+  const shouldAuth =
+    !c.req.path.endsWith(".asc") && !c.req.path.endsWith(".yaml");
+  if (shouldAuth) {
+    const credentials = basicAuth(c.req);
 
-  if (!credentials) {
-    const res = new Response("Unauthorized", {
-      status: 401,
-      headers: {
-        "WWW-Authenticate": 'Basic realm="ForteFibre"',
-      },
-    });
-    return res;
-  }
+    if (!credentials) {
+      const res = new Response("Unauthorized", {
+        status: 401,
+        headers: {
+          "WWW-Authenticate": 'Basic realm="ForteFibre"',
+        },
+      });
+      return res;
+    }
 
-  const { username, password } = credentials;
-  const shaSecret = c.env.APT_ACCESS_KEY;
-  const simpleKey = new SimpleKey(shaSecret);
-  const expectedPassword = await simpleKey.generatePassword(username);
+    const { username, password } = credentials;
+    const shaSecret = c.env.APT_ACCESS_KEY;
+    const simpleKey = new SimpleKey(shaSecret);
+    const expectedPassword = await simpleKey.generatePassword(username);
 
-  if (expectedPassword !== password) {
-    const res = new Response("Unauthorized", {
-      status: 401,
-      headers: {
-        "WWW-Authenticate": 'Basic realm="ForteFibre"',
-      },
-    });
-    return res;
+    if (expectedPassword !== password) {
+      const res = new Response("Unauthorized", {
+        status: 401,
+        headers: {
+          "WWW-Authenticate": 'Basic realm="ForteFibre"',
+        },
+      });
+      return res;
+    }
   }
 
   const object = await c.env.REPO.get(c.req.path.slice(1));
