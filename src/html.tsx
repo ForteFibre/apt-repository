@@ -60,7 +60,7 @@ echo \\
   "deb [signed-by=/etc/apt/keyrings/fortefibre.asc] https://apt.fortefibre.net/ jammy main" | \\
   sudo tee /etc/apt/sources.list.d/fortefibre.list > /dev/null
 
-echo machine apt.fortefibre.net login ${username} password ${password} > /etc/apt/auth.conf.d/fortefibre.conf
+echo machine apt.fortefibre.net login ${username} password ${password} | sudo tee /etc/apt/auth.conf.d/fortefibre.conf
 
 sudo apt update`}
         </code>
