@@ -5,6 +5,7 @@ import { getSignedCookie, setSignedCookie } from "hono/cookie";
 import { SimpleKey } from "./simple-key";
 import { verifyBelongingOrganization } from "./github";
 import { Credentials, Top } from "./html";
+import { createRosdepYaml } from "./auto-rosdep";
 
 interface Env {
   APT_ACCESS_KEY: string;
@@ -68,6 +69,21 @@ app.get("/credentials", async (c) => {
 
 app.get("/", (c) => {
   return c.html(<Top />);
+});
+
+app.get("/rosdep/:codename/:rosdistro/rosdep.yaml", async (c) => {
+  const packagesResponse = await c.env.REPO.get(
+    `dists/${c.req.param("codename")}/main/binary-amd64/Packages`
+  );
+  if (packagesResponse === null) {
+    return c.text("Not Found", { status: 404 });
+  }
+  const packagesContent = await packagesResponse?.text();
+  const rosdepYaml = createRosdepYaml(
+    packagesContent,
+    c.req.param("rosdistro")
+  );
+  return c.text(rosdepYaml);
 });
 
 app.get("*", async (c) => {
