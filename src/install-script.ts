@@ -9,5 +9,5 @@ export function installScript(username: string, password: string): string {
   
   echo machine apt.fortefibre.net login ${username} password ${password} | sudo tee /etc/apt/auth.conf.d/fortefibre.conf
   
-  sudo apt update`;
+  sudo apt-get update`;
 }
