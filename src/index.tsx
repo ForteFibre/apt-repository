@@ -6,6 +6,7 @@ import { SimpleKey } from "./simple-key";
 import { verifyBelongingOrganization } from "./github";
 import { Credentials, Top } from "./html";
 import { createRosdepYaml } from "./auto-rosdep";
+import { installScript } from "./install-script";
 
 interface Env {
   APT_ACCESS_KEY: string;
@@ -84,6 +85,17 @@ app.get("/rosdep/:codename/:rosdistro/rosdep.yaml", async (c) => {
     c.req.param("rosdistro")
   );
   return c.text(rosdepYaml);
+});
+
+app.get("/install.bash", async (c) => {
+  const username = c.req.query("username");
+  const password = c.req.query("password");
+
+  if (!username || !password) {
+    return c.text("Unauthorized", { status: 401 });
+  }
+
+  return c.text(installScript(username, password));
 });
 
 app.get("*", async (c) => {
