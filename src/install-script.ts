@@ -1,13 +1,15 @@
 export function installScript(username: string, password: string): string {
-  return `sudo curl -fsSL https://apt.fortefibre.net/fortefibre.asc -o /etc/apt/keyrings/fortefibre.asc
+  return `
+RELEASE_CODENAME=$(lsb_release -sc)
+ROSDISTRO=\${ROS_DISTRO:-humble}
+sudo curl -fsSL https://apt.fortefibre.net/fortefibre.asc -o /etc/apt/keyrings/fortefibre.asc
 
-echo "yaml https://apt.fortefibre.net/rosdep/jammy/humble/rosdep.yaml" | sudo tee /etc/ros/rosdep/sources.list.d/40-fortefibre-humble.list
+echo "yaml https://apt.fortefibre.net/rosdep/$RELEASE_CODENAME/$ROSDISTRO/rosdep.yaml" | sudo tee /etc/ros/rosdep/sources.list.d/40-fortefibre-$ROSDISTRO.list
 
 echo \\
-  "deb [signed-by=/etc/apt/keyrings/fortefibre.asc] https://apt.fortefibre.net/ jammy main" | \\
+  "deb [signed-by=/etc/apt/keyrings/fortefibre.asc] https://apt.fortefibre.net/ $RELEASE_CODENAME main" | \\
   sudo tee /etc/apt/sources.list.d/fortefibre.list > /dev/null
 
 echo machine apt.fortefibre.net login ${username} password ${password} | sudo tee /etc/apt/auth.conf.d/fortefibre.conf > /dev/null
-
-sudo apt-get update`;
+`;
 }
