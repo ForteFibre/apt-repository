@@ -1,7 +1,7 @@
 export function installScript(username: string, password: string): string {
   return `
 RELEASE_CODENAME=$(lsb_release -sc)
-ROSDISTRO=\${ROS_DISTRO:-humble}
+ROSDISTRO=\${ROS_DISTRO:-jazzy}
 sudo curl -fsSL https://apt.fortefibre.net/fortefibre.asc -o /etc/apt/keyrings/fortefibre.asc
 
 echo "yaml https://apt.fortefibre.net/rosdep/$RELEASE_CODENAME/$ROSDISTRO/rosdep.yaml" | sudo tee /etc/ros/rosdep/sources.list.d/40-fortefibre-$ROSDISTRO.list
