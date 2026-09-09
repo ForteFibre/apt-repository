@@ -15,5 +15,16 @@
       "binding": "REPO",
       "bucket_name": "fortefibre-apt"
     }
-  ]
+  ],
+  "vars": {
+    "GH_ORG_LOGIN": "ForteFibre",
+    // org はリネームできるので、OIDC の検証には不変の数値 ID を使う
+    "GH_ORG_ID": "58257525",
+    // GitHub Actions の既定 audience (https://github.com/ForteFibre) を弾き、
+    // この repo 専用の audience を要求する
+    "OIDC_AUDIENCE": "https://apt.fortefibre.net",
+    // カンマ区切り。`*` は owner/repo の `/` を跨がないワイルドカード。
+    // リポジトリを増減させたらここを編集して deploy する。
+    "OIDC_ALLOWED_REPOS": "ForteFibre/apt-repository,ForteFibre/fibril_*,ForteFibre/src2026_*,ForteFibre/src-2026-boilerplate,ForteFibre/salamander*,ForteFibre/rc27_*,ForteFibre/ros2_can_toolbox,ForteFibre/ros_odrive,ForteFibre/robstride_actuator_bridge_ros2,ForteFibre/refined_message_panel,ForteFibre/parameter_expression"
+  }
 }

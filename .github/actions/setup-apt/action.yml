@@ -1,0 +1,108 @@
+name: Setup ForteFibre APT repository
+description: >-
+  Authenticate to the ForteFibre apt repository using the GitHub Actions OIDC
+  token, then configure apt and rosdep. No long-lived secret is needed, but the
+  calling workflow or job must grant `permissions: id-token: write`.
+
+inputs:
+  endpoint:
+    description: Base URL of the apt repository.
+    required: false
+    default: https://apt.fortefibre.net
+  audience:
+    description: >-
+      OIDC audience to request. Must match the worker's OIDC_AUDIENCE; the
+      default GitHub audience is deliberately rejected by the server.
+    required: false
+    default: https://apt.fortefibre.net
+  ros-distro:
+    description: >-
+      ROS distro used for the rosdep source list. Defaults to $ROS_DISTRO in the
+      environment, and to jazzy if that is unset too.
+    required: false
+    default: ""
+  apt-update:
+    description: Run `apt-get update` after configuring the repository.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Check prerequisites
+      shell: bash
+      run: |
+        if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+          echo "::error::No OIDC token is available to this job. Add 'permissions: id-token: write' to the calling workflow or job."
+          exit 1
+        fi
+
+        if command -v curl > /dev/null 2>&1; then
+          exit 0
+        fi
+
+        # ubuntu:noble のような素のイメージには curl が入っていない
+        echo "curl is not installed, installing it."
+        if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
+        $SUDO apt-get update
+        $SUDO apt-get install -y --no-install-recommends curl ca-certificates
+
+    - name: Configure the ForteFibre apt repository
+      shell: bash
+      env:
+        FORTEFIBRE_ENDPOINT: ${{ inputs.endpoint }}
+        FORTEFIBRE_AUDIENCE: ${{ inputs.audience }}
+        FORTEFIBRE_ROS_DISTRO: ${{ inputs.ros-distro }}
+      run: |
+        # composite の `shell: bash` は `-eo pipefail` 付きで走るため、
+        # curl の失敗がパイプの先で握り潰されることはない
+        token=$(curl -sSf \
+          -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+          "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$FORTEFIBRE_AUDIENCE" \
+          | sed -e 's/.*"value":"\([^"]*\)".*/\1/')
+
+        # jq は ROS のコンテナに入っていないので sed で取り出している。
+        # 抽出に失敗したときに気付けるよう、長さで軽く検査する。
+        if [ "${#token}" -lt 100 ]; then
+          echo "::error::Failed to obtain a GitHub Actions OIDC token."
+          exit 1
+        fi
+        echo "::add-mask::$token"
+
+        script=$(mktemp)
+        trap 'rm -f "$script"' EXIT
+
+        status=$(curl -sS -o "$script" -w '%{http_code}' \
+          -H "Authorization: Bearer $token" \
+          "${FORTEFIBRE_ENDPOINT%/}/oidc/install.bash")
+
+        if [ "$status" != "200" ]; then
+          # 200 以外のボディはエラーメッセージなので表示してよい
+          echo "The server responded with HTTP $status:"
+          cat "$script"
+          echo
+          echo "::error::Could not obtain apt credentials (HTTP $status)."
+          exit 1
+        fi
+
+        # 発行された資格情報がこの先どこかで表示されても漏れないようにしておく。
+        # スクリプト本体は password を含むので、決して表示しない。
+        password=$(sed -n 's/.*password \([0-9a-f]\{64\}\).*/\1/p' "$script")
+        if [ -n "$password" ]; then
+          echo "::add-mask::$password"
+        fi
+
+        if [ -n "$FORTEFIBRE_ROS_DISTRO" ]; then
+          export ROS_DISTRO="$FORTEFIBRE_ROS_DISTRO"
+        fi
+
+        # スクリプト側には set -e を入れていない（人間が貼り付ける用途と兼用のため）ので、
+        # CI ではここで厳格に実行する
+        bash -eu "$script"
+
+    - name: Update package lists
+      if: inputs.apt-update == 'true'
+      shell: bash
+      run: |
+        if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
+        $SUDO apt-get update
