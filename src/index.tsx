@@ -8,11 +8,10 @@ import { Credentials, Top } from "./html";
 import { createRosdepYaml } from "./auto-rosdep";
 import { installScript } from "./install-script";
 
-interface Env {
+interface Env extends Cloudflare.Env {
   APT_ACCESS_KEY: string;
   GH_CLIENT_ID: string;
   GH_CLIENT_SECRET: string;
-  REPO: R2Bucket;
   [key: string]: unknown;
 }
 
@@ -25,7 +24,8 @@ app.use(
       client_id: c.env.GH_CLIENT_ID,
       client_secret: c.env.GH_CLIENT_SECRET,
       oauthApp: true,
-      scope: ["read:org"],
+      // user:email は @hono/oauth-providers が /user/emails を無条件に叩くために必要
+      scope: ["read:org", "user:email"],
     });
 
     return middleware(c, next);
