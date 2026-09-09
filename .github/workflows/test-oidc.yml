@@ -1,0 +1,86 @@
+name: Test OIDC
+
+# apt リポジトリの OIDC 認証と、setup-apt action のセルフテスト。
+# OIDC トークンはローカルで偽造できないので、ここで実環境の検証をまとめて行う。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-runner:
+    name: Host runner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-apt
+      - name: Check the repository is configured
+        run: apt-cache policy | grep apt.fortefibre.net
+
+  slim-container:
+    # sudo も /etc/ros/rosdep/sources.list.d も無い環境。
+    # ここが通れば full な ros:jazzy は自明に通る。
+    name: ros:jazzy-ros-core container
+    runs-on: ubuntu-latest
+    container: ros:jazzy-ros-core
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # このイメージには git が無く、actions/checkout が tarball fallback になるので
+      # 先に入れておく
+      - name: Install git
+        run: apt-get update && apt-get install -y --no-install-recommends git
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-apt
+      - name: Check the repository is configured
+        run: apt-cache policy | grep apt.fortefibre.net
+      - name: Check the rosdep source list was written
+        run: cat /etc/ros/rosdep/sources.list.d/40-fortefibre-jazzy.list
+
+  default-audience-rejected:
+    # 他サービス向けに発行されたトークンを使い回せないことの確認
+    name: Default audience is rejected
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Exchange a token minted for the default audience
+        shell: bash
+        run: |
+          token=$(curl -sSf \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL" \
+            | sed -e 's/.*"value":"\([^"]*\)".*/\1/')
+          echo "::add-mask::$token"
+
+          status=$(curl -sS -o body.txt -w '%{http_code}' \
+            -H "Authorization: Bearer $token" \
+            https://apt.fortefibre.net/oidc/install.bash)
+
+          echo "The server responded with HTTP $status:"
+          cat body.txt
+
+          # 本文まで確認する。status だけだと、catch-all の Basic 認証が返す 401 でも
+          # 通ってしまい、OIDC の検証が効いていることを確かめられない。
+          test "$status" = "401"
+          grep -q "Invalid OIDC token" body.txt
+
+  missing-permission:
+    # id-token: write を付け忘れたときに、分かりやすく落ちること
+    name: Missing id-token permission fails clearly
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - id: setup
+        uses: ./.github/actions/setup-apt
+        continue-on-error: true
+      - name: Assert the action failed
+        run: test "${{ steps.setup.outcome }}" = "failure"
