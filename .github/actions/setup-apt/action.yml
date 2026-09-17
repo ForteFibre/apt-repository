@@ -153,16 +153,20 @@ runs:
         # bundle に同梱してもイメージに焼いても構わない。
         curl -sSf -o "$bundle/fortefibre.asc" "$endpoint/fortefibre.asc"
         ca_bundle=""
-        for candidate in \
-          /etc/ssl/certs/ca-certificates.crt \
-          /etc/pki/tls/certs/ca-bundle.crt \
-          /etc/ssl/cert.pem
-        do
-          if [ -r "$candidate" ]; then
-            ca_bundle="$candidate"
-            break
-          fi
-        done
+        if [ -n "${SSL_CERT_FILE:-}" ] && [ -r "$SSL_CERT_FILE" ]; then
+          ca_bundle="$SSL_CERT_FILE"
+        else
+          for candidate in \
+            /etc/ssl/certs/ca-certificates.crt \
+            /etc/pki/tls/certs/ca-bundle.crt \
+            /etc/ssl/cert.pem
+          do
+            if [ -r "$candidate" ]; then
+              ca_bundle="$candidate"
+              break
+            fi
+          done
+        fi
         if [ -z "$ca_bundle" ]; then
           echo "::error::Could not find the system CA bundle on this runner."
           exit 1
