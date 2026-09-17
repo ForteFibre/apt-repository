@@ -181,11 +181,8 @@ runs:
 
         install -m 755 "$GITHUB_ACTION_PATH/container-setup.sh" "$bundle/setup.sh"
         shell_quote() {
-          escaped=${1//\\/\\\\}
-          escaped=${escaped//\"/\\\"}
-          escaped=${escaped//\$/\\$}
-          escaped=${escaped//\`/\\\`}
-          printf '"%s"' "$escaped"
+          escaped=${1//\'/\'\\\'\'}
+          printf "'%s'" "$escaped"
         }
         bundle_mount=$(shell_quote "$bundle:/run/fortefibre-apt:ro")
         auth_secret=$(shell_quote "id=fortefibre-apt,src=$bundle/auth.conf")
