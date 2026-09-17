@@ -57,12 +57,13 @@ rosdep の YAML は認証不要で配信している。
 action は資格情報を取得すると、ホストの設定とは別に
 `$RUNNER_TEMP/fortefibre-apt` へ持ち出せる一式を書き出す。
 
-| file             | 中身                                            | 秘密 |
-| ---------------- | ----------------------------------------------- | ---- |
-| `auth.conf`      | `machine ... login ... password ...`（mode 600） | ◯   |
-| `fortefibre.asc` | 公開鍵                                          | ×   |
-| `endpoint`       | ベース URL                                      | ×   |
-| `setup.sh`       | コンテナの中で走らせる設定スクリプト            | ×   |
+| file                  | 中身                                            | 秘密 |
+| --------------------- | ----------------------------------------------- | ---- |
+| `auth.conf`           | `machine ... login ... password ...`（mode 600） | ◯   |
+| `fortefibre.asc`      | 公開鍵                                          | ×   |
+| `ca-certificates.crt` | HTTPS で apt リポジトリへ繋ぐための CA bundle   | ×   |
+| `endpoint`            | ベース URL                                      | ×   |
+| `setup.sh`            | コンテナの中で走らせる設定スクリプト            | ×   |
 
 ジョブが終わるとランナーが `$RUNNER_TEMP` ごと消す。
 
@@ -86,7 +87,7 @@ mount されるので、コンテナの中で `setup.sh` を叩く。
 
 `setup.sh` は codename を**コンテナの** `/etc/os-release` から読むので、
 ホストと中身の Ubuntu が違っていてもズレない。
-資格情報も鍵も bundle に入っているので実行にネットワークは要らず、
+資格情報と鍵に加えて CA bundle も同梱しているので、
 `curl` も CA 証明書も無い `ubuntu:noble` のようなイメージでそのまま動く。
 
 rosdep の distro は、action の `ros-distro` を明示していればそれを、
@@ -109,7 +110,8 @@ RUN . /etc/os-release && \
     echo "deb [signed-by=/etc/apt/keyrings/fortefibre.asc] https://apt.fortefibre.net/ $VERSION_CODENAME main" \
       > /etc/apt/sources.list.d/fortefibre.list
 
-RUN --mount=type=secret,id=fortefibre-apt,target=/etc/apt/auth.conf.d/fortefibre.conf,mode=0600 \
+RUN --mount=type=secret,id=fortefibre-ca-certificates,target=/etc/ssl/certs/ca-certificates.crt,mode=0444 \
+    --mount=type=secret,id=fortefibre-apt,target=/etc/apt/auth.conf.d/fortefibre.conf,mode=0600 \
     apt-get update && \
     apt-get install -y --no-install-recommends ros-jazzy-some-package && \
     rm -rf /var/lib/apt/lists/*

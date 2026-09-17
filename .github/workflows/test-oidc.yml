@@ -93,7 +93,8 @@ jobs:
                 > /etc/apt/sources.list.d/fortefibre.list
 
           # Packages も .deb も認証が要るので、update と install は同じ RUN に入れる
-          RUN --mount=type=secret,id=fortefibre-apt,target=/etc/apt/auth.conf.d/fortefibre.conf,mode=0600 \
+          RUN --mount=type=secret,id=fortefibre-ca-certificates,target=/etc/ssl/certs/ca-certificates.crt,mode=0444 \
+              --mount=type=secret,id=fortefibre-apt,target=/etc/apt/auth.conf.d/fortefibre.conf,mode=0600 \
               apt-get update && \
               apt-cache policy | grep apt.fortefibre.net && \
               rm -rf /var/lib/apt/lists/*

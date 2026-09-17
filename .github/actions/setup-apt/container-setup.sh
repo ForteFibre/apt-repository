@@ -36,9 +36,13 @@ $SUDO mkdir -p \
   /etc/apt/keyrings \
   /etc/apt/sources.list.d \
   /etc/apt/auth.conf.d \
+  /etc/ssl/certs \
   /etc/ros/rosdep/sources.list.d
 
 $SUDO install -m 644 "$here/fortefibre.asc" /etc/apt/keyrings/fortefibre.asc
+if [ -f "$here/ca-certificates.crt" ]; then
+  $SUDO install -m 644 "$here/ca-certificates.crt" /etc/ssl/certs/ca-certificates.crt
+fi
 # apt は world-readable な auth ファイルを警告する
 $SUDO install -m 600 "$here/auth.conf" /etc/apt/auth.conf.d/fortefibre.conf
 

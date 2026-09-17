@@ -41,7 +41,8 @@ outputs:
   bundle-dir:
     description: >-
       Directory holding the portable configuration bundle (auth.conf, the public
-      signing key, and setup.sh). Removed by the runner at the end of the job.
+      signing key, the CA bundle, and setup.sh). Removed by the runner at the
+      end of the job.
     value: ${{ steps.bundle.outputs.bundle-dir }}
   docker-run-args:
     description: >-
@@ -52,7 +53,7 @@ outputs:
   docker-build-args:
     description: >-
       Arguments to splice into a `docker build` command line. Exposes auth.conf
-      as the BuildKit secret `fortefibre-apt`, which never lands in a layer.
+      and the CA bundle as BuildKit secrets, which never land in a layer.
     value: ${{ steps.bundle.outputs.docker-build-args }}
   expires-at:
     description: UNIX time at which the issued credentials stop working.
@@ -151,6 +152,7 @@ runs:
         # 鍵と rosdep の YAML は認証不要で配信されている。秘密ではないので、
         # bundle に同梱してもイメージに焼いても構わない。
         curl -sSf -o "$bundle/fortefibre.asc" "$endpoint/fortefibre.asc"
+        cp /etc/ssl/certs/ca-certificates.crt "$bundle/ca-certificates.crt"
 
         # 同じジョブで 2 度目に走ったとき、前回の指定が残らないようにする
         rm -f "$bundle/ros-distro"
@@ -163,7 +165,7 @@ runs:
         {
           echo "bundle-dir=$bundle"
           echo "docker-run-args=-v $bundle:/run/fortefibre-apt:ro"
-          echo "docker-build-args=--secret id=fortefibre-apt,src=$bundle/auth.conf"
+          echo "docker-build-args=--secret id=fortefibre-apt,src=$bundle/auth.conf --secret id=fortefibre-ca-certificates,src=$bundle/ca-certificates.crt"
           echo "expires-at=$expires_at"
         } >> "$GITHUB_OUTPUT"
 
