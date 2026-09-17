@@ -180,12 +180,21 @@ runs:
         fi
 
         install -m 755 "$GITHUB_ACTION_PATH/container-setup.sh" "$bundle/setup.sh"
-        bundle_escaped=$(printf '%q' "$bundle")
+        shell_quote() {
+          escaped=${1//\\/\\\\}
+          escaped=${escaped//\"/\\\"}
+          escaped=${escaped//\$/\\$}
+          escaped=${escaped//\`/\\\`}
+          printf '"%s"' "$escaped"
+        }
+        bundle_mount=$(shell_quote "$bundle:/run/fortefibre-apt:ro")
+        auth_secret=$(shell_quote "id=fortefibre-apt,src=$bundle/auth.conf")
+        ca_secret=$(shell_quote "id=fortefibre-ca-certificates,src=$bundle/ca-certificates.crt")
 
         {
           echo "bundle-dir=$bundle"
-          echo "docker-run-args=-v $bundle_escaped:/run/fortefibre-apt:ro"
-          echo "docker-build-args=--secret id=fortefibre-apt,src=$bundle_escaped/auth.conf --secret id=fortefibre-ca-certificates,src=$bundle_escaped/ca-certificates.crt"
+          echo "docker-run-args=-v $bundle_mount"
+          echo "docker-build-args=--secret $auth_secret --secret $ca_secret"
           echo "expires-at=$expires_at"
         } >> "$GITHUB_OUTPUT"
 
