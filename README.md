@@ -86,7 +86,9 @@ mount されるので、コンテナの中で `setup.sh` を叩く。
 
 `setup.sh` は codename を**コンテナの** `/etc/os-release` から読むので、
 ホストと中身の Ubuntu が違っていてもズレない。
-資格情報も鍵も bundle に入っているので実行にネットワークは要らず、
+資格情報も鍵も bundle に入っているので、設定そのものにネットワークは要らない。
+apt が https のリポジトリを引くのに必要な `ca-certificates` は、
+入っていなければ `setup.sh` が先に導入する。
 `curl` も CA 証明書も無い `ubuntu:noble` のようなイメージでそのまま動く。
 
 rosdep の distro は、action の `ros-distro` を明示していればそれを、
@@ -129,6 +131,16 @@ RUN --mount=type=secret,id=fortefibre-apt,target=/etc/apt/auth.conf.d/fortefibre
 `apt-get update` と `apt-get install` は**同じ `RUN` に入れる**こと。
 `Packages` も `.deb` も認証が要るので、`update` だけ secret 付きで別レイヤにすると
 `install` が 401 で落ちる。
+
+`ubuntu:noble` のような素のイメージをベースにする場合は、先に `ca-certificates` を
+入れておくこと。apt が https のリポジトリを引くのに要る。
+`ros:jazzy-ros-core` のような ROS のイメージには最初から入っている。
+
+```dockerfile
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+```
 
 ### 注意点
 
