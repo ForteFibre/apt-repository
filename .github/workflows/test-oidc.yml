@@ -42,6 +42,71 @@ jobs:
       - name: Check the rosdep source list was written
         run: cat /etc/ros/rosdep/sources.list.d/40-fortefibre-jazzy.list
 
+  docker-run:
+    # ホストの apt は触らず、bundle を mount したコンテナの中だけを設定する。
+    # curl も CA 証明書も無いイメージを選んで、bundle が自己完結していることを確かめる。
+    name: docker run
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - id: apt
+        uses: ./.github/actions/setup-apt
+        with:
+          configure-host: "false"
+      - name: Check the host was left untouched
+        run: test ! -e /etc/apt/sources.list.d/fortefibre.list
+      - name: Configure and use the repository inside a container
+        run: |
+          docker run --rm ${{ steps.apt.outputs.docker-run-args }} ubuntu:noble sh -eu -c '
+            /run/fortefibre-apt/setup.sh
+            apt-get update
+            apt-cache policy | grep apt.fortefibre.net
+          '
+
+  docker-build:
+    # BuildKit の secret mount で auth.conf を渡す。
+    # レイヤに残らないことまで確かめる。
+    name: docker build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - id: apt
+        uses: ./.github/actions/setup-apt
+        with:
+          configure-host: "false"
+      - name: Write a Dockerfile that installs from the private repository
+        run: |
+          mkdir -p "$RUNNER_TEMP/build"
+          cat > "$RUNNER_TEMP/build/Dockerfile" <<'DOCKERFILE'
+          FROM ubuntu:noble
+
+          # 鍵と sources.list は認証不要の情報なので、そのままレイヤに焼いてよい
+          ADD --chmod=644 https://apt.fortefibre.net/fortefibre.asc /etc/apt/keyrings/fortefibre.asc
+          RUN . /etc/os-release && \
+              echo "deb [signed-by=/etc/apt/keyrings/fortefibre.asc] https://apt.fortefibre.net/ $VERSION_CODENAME main" \
+                > /etc/apt/sources.list.d/fortefibre.list
+
+          # Packages も .deb も認証が要るので、update と install は同じ RUN に入れる
+          RUN --mount=type=secret,id=fortefibre-apt,target=/etc/apt/auth.conf.d/fortefibre.conf,mode=0600 \
+              apt-get update && \
+              apt-cache policy | grep apt.fortefibre.net && \
+              rm -rf /var/lib/apt/lists/*
+          DOCKERFILE
+      - name: Build
+        run: |
+          docker build ${{ steps.apt.outputs.docker-build-args }} \
+            -t fortefibre-apt-test "$RUNNER_TEMP/build"
+      - name: Check the credentials did not land in a layer
+        run: |
+          docker run --rm fortefibre-apt-test \
+            sh -c 'test ! -e /etc/apt/auth.conf.d/fortefibre.conf'
+
   default-audience-rejected:
     # 他サービス向けに発行されたトークンを使い回せないことの確認
     name: Default audience is rejected
