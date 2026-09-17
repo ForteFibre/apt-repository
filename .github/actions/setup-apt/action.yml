@@ -152,7 +152,22 @@ runs:
         # 鍵と rosdep の YAML は認証不要で配信されている。秘密ではないので、
         # bundle に同梱してもイメージに焼いても構わない。
         curl -sSf -o "$bundle/fortefibre.asc" "$endpoint/fortefibre.asc"
-        cp /etc/ssl/certs/ca-certificates.crt "$bundle/ca-certificates.crt"
+        ca_bundle=""
+        for candidate in \
+          /etc/ssl/certs/ca-certificates.crt \
+          /etc/pki/tls/certs/ca-bundle.crt \
+          /etc/ssl/cert.pem
+        do
+          if [ -r "$candidate" ]; then
+            ca_bundle="$candidate"
+            break
+          fi
+        done
+        if [ -z "$ca_bundle" ]; then
+          echo "::error::Could not find the system CA bundle on this runner."
+          exit 1
+        fi
+        cp "$ca_bundle" "$bundle/ca-certificates.crt"
 
         # 同じジョブで 2 度目に走ったとき、前回の指定が残らないようにする
         rm -f "$bundle/ros-distro"
