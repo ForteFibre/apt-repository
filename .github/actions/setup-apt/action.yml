@@ -18,13 +18,45 @@ inputs:
   ros-distro:
     description: >-
       ROS distro used for the rosdep source list. Defaults to $ROS_DISTRO in the
-      environment, and to jazzy if that is unset too.
+      environment the repository is configured in, and to jazzy if that is unset
+      too. When set here it is baked into the bundle and wins inside containers
+      as well.
     required: false
     default: ""
-  apt-update:
-    description: Run `apt-get update` after configuring the repository.
+  configure-host:
+    description: >-
+      Configure apt and rosdep on the machine running this action. Set to false
+      when the repository is only consumed inside `docker run` / `docker build`,
+      so that the host's apt configuration is left untouched.
     required: false
     default: "true"
+  apt-update:
+    description: >-
+      Run `apt-get update` after configuring the repository. Ignored when
+      configure-host is false.
+    required: false
+    default: "true"
+
+outputs:
+  bundle-dir:
+    description: >-
+      Directory holding the portable configuration bundle (auth.conf, the public
+      signing key, and setup.sh). Removed by the runner at the end of the job.
+    value: ${{ steps.bundle.outputs.bundle-dir }}
+  docker-run-args:
+    description: >-
+      Arguments to splice into a `docker run` command line. Mounts the bundle
+      read-only at /run/fortefibre-apt; run /run/fortefibre-apt/setup.sh inside
+      the container to configure apt there.
+    value: ${{ steps.bundle.outputs.docker-run-args }}
+  docker-build-args:
+    description: >-
+      Arguments to splice into a `docker build` command line. Exposes auth.conf
+      as the BuildKit secret `fortefibre-apt`, which never lands in a layer.
+    value: ${{ steps.bundle.outputs.docker-build-args }}
+  expires-at:
+    description: UNIX time at which the issued credentials stop working.
+    value: ${{ steps.bundle.outputs.expires-at }}
 
 runs:
   using: composite
@@ -41,13 +73,15 @@ runs:
           exit 0
         fi
 
-        # ubuntu:noble のような素のイメージには curl が入っていない
+        # ubuntu:noble のような素のイメージには curl が入っていない。
+        # トークンの交換そのものに要るので、configure-host に関わらず入れる。
         echo "curl is not installed, installing it."
         if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
         $SUDO apt-get update
         $SUDO apt-get install -y --no-install-recommends curl ca-certificates
 
-    - name: Configure the ForteFibre apt repository
+    - name: Exchange the OIDC token for an apt credential bundle
+      id: bundle
       shell: bash
       env:
         FORTEFIBRE_ENDPOINT: ${{ inputs.endpoint }}
@@ -56,6 +90,8 @@ runs:
       run: |
         # composite の `shell: bash` は `-eo pipefail` 付きで走るため、
         # curl の失敗がパイプの先で握り潰されることはない
+        endpoint="${FORTEFIBRE_ENDPOINT%/}"
+
         token=$(curl -sSf \
           -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
           "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=$FORTEFIBRE_AUDIENCE" \
@@ -69,39 +105,78 @@ runs:
         fi
         echo "::add-mask::$token"
 
-        script=$(mktemp)
-        trap 'rm -f "$script"' EXIT
+        response=$(mktemp)
+        trap 'rm -f "$response"' EXIT
 
-        status=$(curl -sS -o "$script" -w '%{http_code}' \
+        status=$(curl -sS -o "$response" -w '%{http_code}' \
           -H "Authorization: Bearer $token" \
-          "${FORTEFIBRE_ENDPOINT%/}/oidc/install.bash")
+          "$endpoint/oidc/credentials")
 
         if [ "$status" != "200" ]; then
           # 200 以外のボディはエラーメッセージなので表示してよい
           echo "The server responded with HTTP $status:"
-          cat "$script"
+          cat "$response"
           echo
           echo "::error::Could not obtain apt credentials (HTTP $status)."
           exit 1
         fi
 
-        # 発行された資格情報がこの先どこかで表示されても漏れないようにしておく。
-        # スクリプト本体は password を含むので、決して表示しない。
-        password=$(sed -n 's/.*password \([0-9a-f]\{64\}\).*/\1/p' "$script")
-        if [ -n "$password" ]; then
-          echo "::add-mask::$password"
+        # ボディは password を含むので、決して表示しない。
+        # キーはそれぞれ 1 度しか現れないので、貪欲な .* でも取り違えない。
+        username=$(sed -e 's/.*"username":"\([^"]*\)".*/\1/' "$response")
+        password=$(sed -e 's/.*"password":"\([^"]*\)".*/\1/' "$response")
+        expires_at=$(sed -e 's/.*"expires_at":\([0-9]*\).*/\1/' "$response")
+        echo "::add-mask::$password"
+
+        if ! printf '%s' "$password" | grep -qE '^[0-9a-f]{64}$'; then
+          echo "::error::Could not parse the credentials returned by $endpoint."
+          exit 1
         fi
 
+        # RUNNER_TEMP はジョブの終わりにランナーが消す
+        bundle="$RUNNER_TEMP/fortefibre-apt"
+        mkdir -p "$bundle"
+        chmod 700 "$bundle"
+
+        # auth.conf の machine は host 名のみで、scheme も path も含まない
+        machine="${endpoint#*://}"
+        machine="${machine%%/*}"
+
+        printf 'machine %s login %s password %s\n' "$machine" "$username" "$password" \
+          > "$bundle/auth.conf"
+        chmod 600 "$bundle/auth.conf"
+
+        printf '%s\n' "$endpoint" > "$bundle/endpoint"
+
+        # 鍵と rosdep の YAML は認証不要で配信されている。秘密ではないので、
+        # bundle に同梱してもイメージに焼いても構わない。
+        curl -sSf -o "$bundle/fortefibre.asc" "$endpoint/fortefibre.asc"
+
+        # 同じジョブで 2 度目に走ったとき、前回の指定が残らないようにする
+        rm -f "$bundle/ros-distro"
         if [ -n "$FORTEFIBRE_ROS_DISTRO" ]; then
-          export ROS_DISTRO="$FORTEFIBRE_ROS_DISTRO"
+          printf '%s\n' "$FORTEFIBRE_ROS_DISTRO" > "$bundle/ros-distro"
         fi
 
-        # スクリプト側には set -e を入れていない（人間が貼り付ける用途と兼用のため）ので、
-        # CI ではここで厳格に実行する
-        bash -eu "$script"
+        install -m 755 "$GITHUB_ACTION_PATH/container-setup.sh" "$bundle/setup.sh"
+
+        {
+          echo "bundle-dir=$bundle"
+          echo "docker-run-args=-v $bundle:/run/fortefibre-apt:ro"
+          echo "docker-build-args=--secret id=fortefibre-apt,src=$bundle/auth.conf"
+          echo "expires-at=$expires_at"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Configure the ForteFibre apt repository on the host
+      if: inputs.configure-host == 'true'
+      shell: bash
+      env:
+        FORTEFIBRE_BUNDLE: ${{ steps.bundle.outputs.bundle-dir }}
+      run: |
+        "$FORTEFIBRE_BUNDLE/setup.sh"
 
     - name: Update package lists
-      if: inputs.apt-update == 'true'
+      if: inputs.configure-host == 'true' && inputs.apt-update == 'true'
       shell: bash
       run: |
         if [ "$(id -u)" -eq 0 ]; then SUDO=""; else SUDO="sudo"; fi
