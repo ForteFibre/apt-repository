@@ -86,6 +86,11 @@ jobs:
           cat > "$RUNNER_TEMP/build/Dockerfile" <<'DOCKERFILE'
           FROM ubuntu:noble
 
+          # apt が https のリポジトリを引くのに要る。素のイメージには入っていない
+          RUN apt-get update && \
+              apt-get install -y --no-install-recommends ca-certificates && \
+              rm -rf /var/lib/apt/lists/*
+
           # 鍵と sources.list は認証不要の情報なので、そのままレイヤに焼いてよい
           ADD --chmod=644 https://apt.fortefibre.net/fortefibre.asc /etc/apt/keyrings/fortefibre.asc
           RUN . /etc/os-release && \

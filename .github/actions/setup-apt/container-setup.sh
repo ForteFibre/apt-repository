@@ -32,6 +32,16 @@ else
   rosdistro=${ROS_DISTRO:-jazzy}
 fi
 
+# apt が https のリポジトリを引くには CA 証明書が要る。ubuntu:noble のような
+# 素のイメージには入っておらず、無いと InRelease の取得が handshake で落ちる。
+# この時点ではまだ https のリポジトリを足していないので、distro の http な
+# リポジトリだけで導入できる。
+if [ ! -e /etc/ssl/certs/ca-certificates.crt ]; then
+  echo "ca-certificates is not installed, installing it."
+  $SUDO apt-get update
+  $SUDO apt-get install -y --no-install-recommends ca-certificates
+fi
+
 $SUDO mkdir -p \
   /etc/apt/keyrings \
   /etc/apt/sources.list.d \
