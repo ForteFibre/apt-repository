@@ -133,9 +133,7 @@ runs:
           exit 1
         fi
 
-        # 呼ぶたびに別のディレクトリ（mode 700）を作る。self-hosted のランナーでは、
-        # container: のジョブが root で作ったものを RUNNER_TEMP の掃除が消せずに残し、
-        # 固定のパスだと後のジョブが一般ユーザで触れず落ちる
+        # 前に作った bundle と重ならないよう、呼ぶたびに別のディレクトリ（mode 700）を作る
         bundle=$(mktemp -d "$RUNNER_TEMP/fortefibre-apt.XXXXXX")
 
         # auth.conf の machine は host 名のみで、scheme も path も含まない
@@ -158,8 +156,7 @@ runs:
 
         install -m 755 "$GITHUB_ACTION_PATH/container-setup.sh" "$bundle/setup.sh"
 
-        # container: のジョブは root で走るので、bundle の持ち主を RUNNER_TEMP に揃え、
-        # ジョブの終わりにランナー（一般ユーザ）が消せるようにする。root は mode 600 でも読める
+        # root で作ったときも、ジョブの終わりにランナーが消せるよう持ち主を揃える
         if [ "$(id -u)" -eq 0 ]; then
           chown -R "$(stat -c '%u:%g' "$RUNNER_TEMP")" "$bundle"
         fi
