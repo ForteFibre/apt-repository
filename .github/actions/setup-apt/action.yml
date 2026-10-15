@@ -133,10 +133,8 @@ runs:
           exit 1
         fi
 
-        # RUNNER_TEMP はジョブの終わりにランナーが消す
-        bundle="$RUNNER_TEMP/fortefibre-apt"
-        mkdir -p "$bundle"
-        chmod 700 "$bundle"
+        # 前に作った bundle と重ならないよう、呼ぶたびに別のディレクトリ（mode 700）を作る
+        bundle=$(mktemp -d "$RUNNER_TEMP/fortefibre-apt.XXXXXX")
 
         # auth.conf の machine は host 名のみで、scheme も path も含まない
         machine="${endpoint#*://}"
@@ -152,13 +150,16 @@ runs:
         # bundle に同梱してもイメージに焼いても構わない。
         curl -sSf -o "$bundle/fortefibre.asc" "$endpoint/fortefibre.asc"
 
-        # 同じジョブで 2 度目に走ったとき、前回の指定が残らないようにする
-        rm -f "$bundle/ros-distro"
         if [ -n "$FORTEFIBRE_ROS_DISTRO" ]; then
           printf '%s\n' "$FORTEFIBRE_ROS_DISTRO" > "$bundle/ros-distro"
         fi
 
         install -m 755 "$GITHUB_ACTION_PATH/container-setup.sh" "$bundle/setup.sh"
+
+        # root で作ったときも、ジョブの終わりにランナーが消せるよう持ち主を揃える
+        if [ "$(id -u)" -eq 0 ]; then
+          chown -R "$(stat -c '%u:%g' "$RUNNER_TEMP")" "$bundle"
+        fi
 
         {
           echo "bundle-dir=$bundle"
