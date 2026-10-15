@@ -55,7 +55,7 @@ rosdep の YAML は認証不要で配信している。
 `/etc/apt/auth.conf.d/fortefibre.conf` の 1 行だけになる。
 
 action は資格情報を取得すると、ホストの設定とは別に
-`$RUNNER_TEMP/fortefibre-apt` へ持ち出せる一式を書き出す。
+`$RUNNER_TEMP/fortefibre-apt.XXXXXX`（呼ぶたびに別のディレクトリ。パスは `bundle-dir` で受け取る）へ持ち出せる一式を書き出す。
 
 | file             | 中身                                            | 秘密 |
 | ---------------- | ----------------------------------------------- | ---- |
@@ -65,6 +65,8 @@ action は資格情報を取得すると、ホストの設定とは別に
 | `setup.sh`       | コンテナの中で走らせる設定スクリプト            | ×   |
 
 ジョブが終わるとランナーが `$RUNNER_TEMP` ごと消す。
+`container:` のジョブ（root）で作った bundle も、持ち主を `$RUNNER_TEMP` に揃えるので、
+self-hosted のランナーで後に残らない。
 
 #### docker run
 
@@ -94,8 +96,8 @@ apt が https のリポジトリを引くのに必要な `ca-certificates` は�
 rosdep の distro は、action の `ros-distro` を明示していればそれを、
 していなければコンテナ側の `$ROS_DISTRO` を使う。
 
-`docker compose` も同じで、`volumes:` に
-`${RUNNER_TEMP}/fortefibre-apt:/run/fortefibre-apt:ro` を書けばよい。
+`docker compose` も同じで、`volumes:` に `${FORTEFIBRE_APT_BUNDLE}:/run/fortefibre-apt:ro` と書き、
+ステップの `env:` で `FORTEFIBRE_APT_BUNDLE: ${{ steps.apt.outputs.bundle-dir }}` を渡せばよい。
 
 #### docker build
 
